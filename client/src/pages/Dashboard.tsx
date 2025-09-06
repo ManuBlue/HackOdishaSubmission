@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,40 +21,61 @@ interface UploadedFile {
   size: number;
   type: string;
   url: string;
-  uploadedAt: Date;
+  uploadedAt: string; // ISO string from API
 }
 
 const Dashboard = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const { user, logout } = useAuth();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const navigate = useNavigate();
+
+  // Fetch files from API on mount
+  useEffect(() => {
+    const fetchFiles = async () => {
+      try {
+        const res = await fetch("/api/uploads"); // adjust API URL
+        if (!res.ok) throw new Error("Failed to fetch files");
+        const data: UploadedFile[] = await res.json();
+        setUploadedFiles(data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchFiles();
+  }, []);
 
   const handleLogout = () => {
     logout();
   };
 
-  const handleFileUpload = (files: File[]) => {
-    const newFiles: UploadedFile[] = files.map((file) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      url: URL.createObjectURL(file),
-      uploadedAt: new Date(),
-    }));
+  const handleFileUpload = async (files: File[]) => {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
 
-    setUploadedFiles((prev) => [...prev, ...newFiles]);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+      const newFiles: UploadedFile[] = await res.json();
+
+      setUploadedFiles((prev) => [...prev, ...newFiles]);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleDeleteFile = (id: string) => {
-    setUploadedFiles((prev) => {
-      const fileToDelete = prev.find((f) => f.id === id);
-      if (fileToDelete) {
-        URL.revokeObjectURL(fileToDelete.url);
-      }
-      return prev.filter((f) => f.id !== id);
-    });
+  const handleDeleteFile = async (id: string) => {
+    try {
+      const res = await fetch(`/api/uploads/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+
+      setUploadedFiles((prev) => prev.filter((f) => f.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -66,6 +87,57 @@ const Dashboard = () => {
       Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
     );
   };
+
+  const renderFileCard = (file: UploadedFile, showDelete = true) => (
+    <div
+      key={file.id}
+      className="border rounded-lg p-4 bg-white flex items-center gap-4"
+    >
+      {/* Left: image/video preview */}
+      {file.type.startsWith("image/") ? (
+        <img
+          src={file.url || "/placeholder.svg"}
+          alt={file.name}
+          className="w-28 h-28 object-cover rounded border"
+        />
+      ) : (
+        <div className="w-28 h-28 flex items-center justify-center bg-gray-100 border rounded">
+          <FileImage className="h-10 w-10 text-gray-400" />
+        </div>
+      )}
+
+      {/* Right: details */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {file.name}
+            </p>
+            <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+          </div>
+          {showDelete && (
+            <Button
+              onClick={() => handleDeleteFile(file.id)}
+              variant="ghost"
+              size="sm"
+              className="text-red-600 hover:text-red-700"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <div className="mt-2 flex items-center justify-between">
+          <Badge variant="secondary" className="text-xs">
+            {file.type}
+          </Badge>
+          <span className="text-xs text-gray-500">
+            {new Date(file.uploadedAt).toLocaleTimeString()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -89,8 +161,8 @@ const Dashboard = () => {
             )}
             <Button
               onClick={handleLogout}
-              variant="outline"
-              className="flex items-center gap-2 bg-transparent"
+              variant={"outline"}
+              className="flex items-center gap-2 bg-black text-white "
             >
               <LogOut className="h-4 w-4" />
               Logout
@@ -116,6 +188,14 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <FileUpload onFileUpload={handleFileUpload} />
+
+              {/* Preview uploaded right after selecting */}
+              {uploadedFiles.length > 0 && (
+                <div className="mt-6 space-y-4">
+                  <h4 className="text-sm font-medium text-gray-700">Preview</h4>
+                  {uploadedFiles.map((file) => renderFileCard(file, false))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -140,51 +220,8 @@ const Dashboard = () => {
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {uploadedFiles.map((file) => (
-                    <div
-                      key={file.id}
-                      className="border rounded-lg p-4 bg-white"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {file.name}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {formatFileSize(file.size)}
-                          </p>
-                        </div>
-                        <Button
-                          onClick={() => handleDeleteFile(file.id)}
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      {file.type.startsWith("image/") && (
-                        <div className="mb-3">
-                          <img
-                            src={file.url || "/placeholder.svg"}
-                            alt={file.name}
-                            className="w-full h-32 object-cover rounded border"
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between">
-                        <Badge variant="secondary" className="text-xs">
-                          {file.type}
-                        </Badge>
-                        <span className="text-xs text-gray-500">
-                          {file.uploadedAt.toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="space-y-4">
+                  {uploadedFiles.map((file) => renderFileCard(file))}
                 </div>
               )}
             </CardContent>
