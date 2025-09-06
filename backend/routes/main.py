@@ -6,6 +6,8 @@ import bcrypt
 from bson import ObjectId
 from typing import  List
 from fastapi.responses import FileResponse
+import jwt
+
 app = FastAPI()
 
 from processVideo import processVideo
@@ -18,9 +20,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+secretToken = "Letthisbetemp"
 # MongoDB client
-client = AsyncIOMotorClient("PUT MONGODB URI HERE !!!")
+client = AsyncIOMotorClient("mongodb://localhost:27017/")
 db = client['cctv_processing']
 collection = db['User_credentials']
 
@@ -37,6 +39,7 @@ async def get_user(email: str):
         # Convert MongoDB ObjectId to string
         user_data["id"] = str(user_data["_id"])
         return user_data
+    return None
 async def getUserById(userId: str):
     user_data = await collection.find_one({"_id": ObjectId(userId)})
     if user_data:
@@ -63,55 +66,65 @@ def cleanup_files(paths: list[str]):
 
 @app.post("/register")
 async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    # Check if user already exists
     existing_user = await get_user(email)
     if existing_user:
         raise HTTPException(status_code=400, detail="User already exists!")
 
-    # Hash the password
-    hashed_password = hash_password(password)
+    try:
+        hashed_password = hash_password(password)
 
-    # Create user document
-    user_document = {
-        "username": username,
-        "email": email,
-        "password": hashed_password
-    }
+        # Create user document
+        user_document = {
+            "username": username,
+            "email": email,
+            "password": hashed_password
+        }
 
-    # Insert into MongoDB
-    result = await collection.insert_one(user_document)
-    
-    # Ensure user folders exist
-    os.makedirs(os.path.join(usersFolder, str(result.inserted_id)), exist_ok=True)
-    os.makedirs(os.path.join(usersFolder, str(result.inserted_id), "images"), exist_ok=True)
+        # Insert into MongoDB
+        result = await collection.insert_one(user_document)        
+        # Ensure user folders exist
+        os.makedirs(os.path.join(usersFolder, str(result.inserted_id)), exist_ok=True)
+        os.makedirs(os.path.join(usersFolder, str(result.inserted_id), "images"), exist_ok=True)
+        
+        pytoken = jwt.encode({
+            "user_id": str(result.inserted_id),
+            "username": user_document["username"],
+            "email": user_document["email"]}, secretToken, algorithm="HS256")
+        print(pytoken)
+        return pytoken
+    except Exception as e:
+        print(e)
+        await collection.delete_one({"_id": result.inserted_id})
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
-    return {"status": "ok", "user_id": str(result.inserted_id)}
-#---------------------------------------------------------------------#
-#Login sucks fr
-
-
-
-#FIX IT
-#
-##---------------------------------------------------------------------#
 @app.post("/login")
 async def login(email: str = Form(...), password: str = Form(...)):
-    user_details = await get_user(email)
+    try:
+        user_details = await get_user(email)
+        if not user_details:
+            raise HTTPException(status_code=401, detail="Invalid Credentials!")
+        
+        stored_pw = user_details["password"]
+        if isinstance(stored_pw, str):
+            stored_pw = stored_pw.encode("utf-8")
 
-    if not user_details:
-        raise HTTPException(status_code=401, detail="Invalid Credentials!")
-    # Compare password
-    stored_pw = user_details["password"]
-    if isinstance(stored_pw, str):
-        stored_pw = stored_pw.encode("utf-8")
+        if not bcrypt.checkpw(password.encode("utf-8"), stored_pw):
+            raise HTTPException(status_code=401, detail="Invalid Credentials!")
 
-    if not bcrypt.checkpw(password.encode("utf-8"), stored_pw):
-        raise HTTPException(status_code=401, detail="Invalid Credentials!")
-    return {
-        "user_id": user_details["id"],
-        "username": user_details["username"],
-        "email": user_details["email"]
-    }
+        pytoken = jwt.encode({
+            "user_id": user_details["id"],
+            "username": user_details["username"],
+            "email": user_details["email"]
+        }, secretToken, algorithm="HS256")
+
+        return {"token": pytoken}
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
 
 @app.post("/addImages")
 async def addImages(userId: str, names: List[str], images: List[UploadFile] = File(...)):
@@ -198,3 +211,8 @@ async def getSpecificImage(userId: str, personName: str, imageName: str):
         raise HTTPException(status_code=404, detail="Image not found")
 
     return FileResponse(imagePath)
+
+import uvicorn
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)

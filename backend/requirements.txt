@@ -1,3 +1,5 @@
 fastapi[standard]==0.116.1
 motor == 3.7.1
 bcrypt==4.2.0
+pyjwt==2.10.1
+uvicorn==0.35.0
