@@ -7,7 +7,7 @@ def recognizePerson(userFolderPath,faceEncoding):
     modelPackage = joblib.load(modelPath)
     model = modelPackage["model"]
     classes = modelPackage["classes"]
-    probas = model.predict_proba([faceEncoding])
+    probas = model.decision_function([faceEncoding])
     predictedPerson = classes[probas.argmax()]
     confidence = probas.max()
     return predictedPerson, confidence
