@@ -221,6 +221,18 @@ async def getSpecificImage(token: str, personName: str, imageName: str):
         raise HTTPException(status_code=404, detail="Image not found")
 
     return FileResponse(imagePath)
+@app.get("/deleteSpecificImage")
+async def deleteSpecificImage(token: str, personName: str, imageName: str):
+    userId = tokenToUserId(token)
+    if not await getUserById(userId):
+        raise HTTPException(status_code=401, detail="Invalid UserId!")
+
+    imagePath = os.path.join(usersFolder, userId, "images", personName, imageName)
+    if not os.path.exists(imagePath):
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    os.remove(imagePath)
+    return {"message": "Image deleted successfully"}
 
 import uvicorn
 
