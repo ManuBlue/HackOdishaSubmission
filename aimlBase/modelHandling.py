@@ -41,3 +41,50 @@ def createModelScratch(userFolderPath):
         "classes": np.unique(y)
     }
     joblib.dump(modelPackage, os.path.join(userFolderPath, "model.pkl"))
+    return
+
+
+
+
+def updateModel(userFolderPath,imagePaths):
+    #assuming imagePaths is a list of paths to new images
+    modelPath = os.path.join(userFolderPath, "model.pkl")
+    x = []
+    y = []
+    for imagePath in imagePaths:
+        if not os.path.isfile(imagePath):
+            continue
+
+        image = face_recognition.load_image_file(imagePath)
+        encodings = face_recognition.face_encodings(image)
+        if not encodings:
+            continue
+
+        faceEncoding = encodings[0]
+        personName = os.path.basename(os.path.dirname(imagePath))
+        x.append(faceEncoding)
+        y.append(personName)
+    x = np.array(x)
+    y = np.array(y)
+    if not os.path.isfile(modelPath):
+        clf = make_pipeline(
+            StandardScaler(),
+            SGDClassifier(class_weight="balanced", random_state=42)
+        )
+        clf.fit(x, y)
+        modelPackage = {
+            "model": clf,
+            "classes": np.unique(y)
+        }
+        joblib.dump(modelPackage, modelPath)
+        return
+    modelPackage = joblib.load(modelPath)
+    clf = modelPackage["model"]
+    classes = modelPackage["classes"]
+    clf.partial_fit(x, y, classes=np.unique(np.concatenate((classes, y))))
+    modelPackage = {
+        "model": clf,
+        "classes": np.unique(np.concatenate((classes, y)))
+    }
+    joblib.dump(modelPackage, modelPath)
+    return 
