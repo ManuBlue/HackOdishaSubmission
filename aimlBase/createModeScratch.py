@@ -40,4 +40,4 @@ def createModelScratch(userFolderPath):
         "model": clf,
         "classes": np.unique(y)
     }
-    joblib.dump(modelPackage, os.path.join(userFolderPath, "model_scratch.pkl"))
+    joblib.dump(modelPackage, os.path.join(userFolderPath, "model.pkl"))
