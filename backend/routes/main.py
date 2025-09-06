@@ -1,52 +1,200 @@
-from fastapi import FastAPI, Depends, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File,BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from typing import Dict
 import bcrypt
-
-import os
+from bson import ObjectId
+from typing import  List
+from fastapi.responses import FileResponse
 app = FastAPI()
-url = "placeholder"
+
+from processVideo import processVideo
+from modelHandling import createModelScratch
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-client = AsyncIOMotorClient("PUT MONGODB URI HERE !!!")  
+
+# MongoDB client
+client = AsyncIOMotorClient("PUT MONGODB URI HERE !!!")
 db = client['cctv_processing']
 collection = db['User_credentials']
-currDirectory = os.path.dirname(os.path.abspath(__file__))
-usersFolder = os.path.join(currDirectory,"../","database","users")
 
-async def get_user(email:str):
+# Paths
+currDirectory = os.path.dirname(os.path.abspath(__file__))
+usersFolder = os.path.join(currDirectory, "../", "database", "users")
+
+# -------------------------------
+# Helper functions
+# -------------------------------
+async def get_user(email: str):
     user_data = await collection.find_one({"email": email})
     if user_data:
-        user_data["id"] = str(user_data["id"])
+        # Convert MongoDB ObjectId to string
+        user_data["id"] = str(user_data["_id"])
         return user_data
+async def getUserById(userId: str):
+    user_data = await collection.find_one({"_id": ObjectId(userId)})
+    if user_data:
+        # Convert MongoDB ObjectId to string
+        user_data["id"] = str(user_data["_id"])
+        return user_data
+    return None
 
-async def hash_password(user:Dict):
-    bytes_pw = user["password"].encode("utf-8")
-    hashed_pw = await bcrypt.hashpw(bytes_pw, bcrypt.gensalt(rounds=12))
-    user["password"] = hashed_pw
-    return user
+def hash_password(password: str) -> str:
+    """Hash password and return as utf-8 string."""
+    bytes_pw = password.encode("utf-8")
+    hashed_pw = bcrypt.hashpw(bytes_pw, bcrypt.gensalt(rounds=12))
+    return hashed_pw.decode("utf-8")
+def cleanup_files(paths: list[str]):
+    for path in paths:
+        try:
+            os.remove(path)
+        except Exception as e:
+            print(f"Failed to remove {path}: {e}")
 
+# -------------------------------
+# Endpoints
+# -------------------------------
+
+@app.post("/register")
+async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...)):
+    # Check if user already exists
+    existing_user = await get_user(email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User already exists!")
+
+    # Hash the password
+    hashed_password = hash_password(password)
+
+    # Create user document
+    user_document = {
+        "username": username,
+        "email": email,
+        "password": hashed_password
+    }
+
+    # Insert into MongoDB
+    result = await collection.insert_one(user_document)
+    
+    # Ensure user folders exist
+    os.makedirs(os.path.join(usersFolder, str(result.inserted_id)), exist_ok=True)
+    os.makedirs(os.path.join(usersFolder, str(result.inserted_id), "images"), exist_ok=True)
+
+    return {"status": "ok", "user_id": str(result.inserted_id)}
+#---------------------------------------------------------------------#
+#Login sucks fr
+
+
+
+#FIX IT
+#
+##---------------------------------------------------------------------#
 @app.post("/login")
-async def login(user:Dict = Depends(hash_password)):
-    req_bytes_pw = user["password"].encode("utf-8")
-    user_details = await get_user(user['email'])
-    if (not user_details) or bcrypt.checkpw(req_bytes_pw, user_details["password"]):
-        raise HTTPException(status_code=404, detail="Invalid Credentials!")
-    os.makedirs(os.path.join(usersFolder,user_details['id']), exist_ok=True)
-    os.makedirs(os.path.join(usersFolder,user_details['id'],"images"), exist_ok=True)
-    return {"user_id": user_details["id"], "username": user_details["username"], "email": user_details["email"]}
+async def login(email: str = Form(...), password: str = Form(...)):
+    user_details = await get_user(email)
 
-@app.post("/addsamples")
-async def add_samples(user_id: str, username: str, email:str):
-    pass
+    if not user_details:
+        raise HTTPException(status_code=401, detail="Invalid Credentials!")
+    # Compare password
+    stored_pw = user_details["password"]
+    if isinstance(stored_pw, str):
+        stored_pw = stored_pw.encode("utf-8")
 
+    if not bcrypt.checkpw(password.encode("utf-8"), stored_pw):
+        raise HTTPException(status_code=401, detail="Invalid Credentials!")
+    return {
+        "user_id": user_details["id"],
+        "username": user_details["username"],
+        "email": user_details["email"]
+    }
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: str | None = None):
-    return {"item_id": item_id, "query": q}
+@app.post("/addImages")
+async def addImages(userId: str, names: List[str], images: List[UploadFile] = File(...)):
+    if not await getUserById(userId):
+        raise HTTPException(status_code=401, detail="Invalid UserId!")
+
+    if len(names) != len(images):
+        raise HTTPException(status_code=400, detail="names and images count must match")
+
+    userFolder = os.path.join(usersFolder, userId, "images")
+    for i, personName in enumerate(names):
+        personFolder = os.path.join(userFolder, personName)
+        os.makedirs(personFolder, exist_ok=True)
+
+        filePath = os.path.join(personFolder, images[i].filename)
+
+        with open(filePath, "wb") as f:
+            f.write(await images[i].read())  
+    return {"message": "Images uploaded successfully"}
+
+@app.post("/processVideo")
+async def processVideo(
+    userId: str = Form(...), 
+    video: UploadFile = File(...), 
+    background_tasks: BackgroundTasks = None
+):
+    if not await getUserById(userId):
+        raise HTTPException(status_code=401, detail="Invalid UserId!")
+
+    userFolder = os.path.join(usersFolder, userId)
+
+    # temporarily save input video
+    inputVideoPath = os.path.join(userFolder, video.filename)
+    with open(inputVideoPath, "wb") as f:
+        f.write(await video.read())
+
+    # output path
+    outputVideoPath = os.path.join(userFolder, "output_" + video.filename)
+    processVideo(videoPath=inputVideoPath, userFolderPath=userFolder, outputVideoPath=outputVideoPath)
+
+    # schedule cleanup
+    background_tasks.add_task(cleanup_files, [inputVideoPath, outputVideoPath])
+
+    # send file response
+    return FileResponse(
+        outputVideoPath,
+        media_type="video/mp4",   # fallback (see below for auto-detect)
+        filename="processed_" + video.filename
+    )
+
+@app.get("/makeModel")
+async def makeModel(userId: str = Form(...)):
+    if not await getUserById(userId):
+        raise HTTPException(status_code=401, detail="Invalid UserId!")
+
+    imagesFolder = os.path.join(usersFolder, userId, "images")
+
+    createModelScratch(imagesFolder)
+
+    return {"status": "Model remade successfully"}
+
+@app.get("/getUserImageDetails")
+async def getUserImageDetails(userId: str):
+    if not await getUserById(userId):
+        raise HTTPException(status_code=401, detail="Invalid UserId!")
+    imagesFolder = os.path.join(usersFolder, userId, "images")
+    details = {}
+    for personName in os.listdir(imagesFolder):
+        personFolder = os.path.join(imagesFolder, personName)
+        if not os.path.isdir(personFolder):
+            continue
+        details[personName] = {
+            "image_count": len(os.listdir(personFolder)),
+            "images": os.listdir(personFolder)
+        }
+    return details
+@app.get('/getSpecificImage')
+async def getSpecificImage(userId: str, personName: str, imageName: str):
+    if not await getUserById(userId):
+        raise HTTPException(status_code=401, detail="Invalid UserId!")
+
+    imagePath = os.path.join(usersFolder, userId, "images", personName, imageName)
+    if not os.path.exists(imagePath):
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    return FileResponse(imagePath)
