@@ -1,62 +1,67 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import type React from "react";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const Signup = () => {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
+    e.preventDefault();
+    setError("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match")
-      return
+      setError("Passwords do not match");
+      return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters long")
-      return
+      setError("Password must be at least 6 characters long");
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
 
     try {
-      // Simulate API call - replace with actual registration endpoint
       const response = await fetch("/api/auth/signup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password }),
-      })
+      });
 
       if (response.ok) {
-        const data = await response.json()
-        localStorage.setItem("jwt_token", data.token)
-        navigate("/dashboard")
+        const data = await response.json();
+        localStorage.setItem("jwt_token", data.token);
+        navigate("/dashboard");
       } else {
-        const errorData = await response.json()
-        setError(errorData.message || "Signup failed")
+        const errorData = await response.json();
+        setError(errorData.message || "Signup failed");
       }
     } catch (err) {
-      setError("Network error. Please try again.")
+      setError("Network error. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -125,7 +130,7 @@ const Signup = () => {
         </CardContent>
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default Signup
+export default Signup;
