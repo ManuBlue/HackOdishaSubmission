@@ -1,4 +1,4 @@
-import { User, Upload, FileImage, LogOut, Home, Video, Settings } from "lucide-react";
+import { User, Upload, FileImage, LogOut, Home, Video, Settings, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -12,7 +12,8 @@ const navItems = [
   { label: "Upload", icon: Upload, path: "/add-media" },
   { label: "Process Video", icon: Video, path: "/process-video" },
   { label: "My Files", icon: FileImage, path: "/current-media" },
-  { label: "Create Model", icon: Settings, path: "/create-model" }, // Added create-model
+  { label: "Create Model", icon: Settings, path: "/create-model" },
+  { label: "RealTime Video", icon: Camera, path: "/realtime-video" },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ userEmail, onLogout }) => {
@@ -20,12 +21,25 @@ const Sidebar: React.FC<SidebarProps> = ({ userEmail, onLogout }) => {
   const location = useLocation();
 
   return (
-    <aside className="h-screen w-64 bg-white border-r border-gray-200 flex flex-col justify-between fixed left-0 top-0 z-30">
+    <aside className="h-screen w-64 bg-white border-r border-gray-200 flex flex-col justify-between fixed left-0 top-0 z-30 shadow-sm">
       <div>
-        <div className="px-6 py-6 border-b border-gray-100">
-          <h2 className="text-xl font-bold text-gray-900 tracking-tight">Monitr</h2>
+        <div className="px-6 py-6 border-b border-gray-100 flex flex-col items-start">
+          <div
+            className="flex items-center gap-3 group cursor-pointer transition"
+            onClick={() => navigate("/dashboard")}
+          >
+            <img
+              src="/cctv.png"
+              alt="Monitr Logo"
+              className="h-8 w-8 rounded transition-transform group-hover:scale-105 group-hover:shadow border border-gray-200 bg-white"
+              style={{ padding: "6px" }} // Only padding, no background
+            />
+            <h2 className="text-2xl font-extrabold text-black tracking-tight select-none">
+              Monitr
+            </h2>
+          </div>
           {userEmail && (
-            <div className="flex items-center gap-2 mt-4 text-sm text-gray-600">
+            <div className="flex items-center gap-2 mt-4 text-xs text-gray-600">
               <User className="h-4 w-4" />
               <span className="truncate">{userEmail}</span>
             </div>
@@ -38,10 +52,10 @@ const Sidebar: React.FC<SidebarProps> = ({ userEmail, onLogout }) => {
               <Button
                 key={item.label}
                 variant={isActive ? "default" : "ghost"}
-                className={`w-full justify-start gap-3 px-4 py-2 rounded-lg text-base ${
+                className={`w-full justify-start gap-3 px-4 py-2 rounded-lg text-base font-medium transition ${
                   isActive
-                    ? "bg-black text-white"
-                    : "text-gray-700 hover:bg-gray-100"
+                    ? "bg-black text-white shadow"
+                    : "text-gray-800 hover:bg-gray-100"
                 }`}
                 onClick={() => navigate(item.path)}
               >
@@ -56,7 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userEmail, onLogout }) => {
         <Button
           onClick={onLogout}
           variant="outline"
-          className="w-full flex items-center gap-2 bg-black text-white"
+          className="w-full flex items-center gap-2 bg-black text-white hover:bg-gray-900 transition"
         >
           <LogOut className="h-4 w-4" />
           Logout

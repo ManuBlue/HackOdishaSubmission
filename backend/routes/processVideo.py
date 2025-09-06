@@ -11,7 +11,7 @@ def processVideo(videoPath, userFolderPath, outputVideoPath):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 'mp4v' works for .mp4
+    fourcc = cv2.VideoWriter_fourcc(*'H264')  # 'mp4v' works for .mp4
     out = cv2.VideoWriter(outputVideoPath, fourcc, fps, (width, height))
 
     idToConfidence = {}  # {trackingID: (predictedPerson, confidence)}

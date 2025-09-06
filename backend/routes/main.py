@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException, Form, UploadFile, File,BackgroundTasks
+from fastapi import FastAPI, HTTPException, Form, UploadFile, File,BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import bcrypt
@@ -7,7 +7,11 @@ from bson import ObjectId
 from typing import  List
 from fastapi.responses import FileResponse
 import jwt
-
+import cv2
+import numpy as np
+from ultralytics import YOLO
+import face_recognition
+from recognize import recognizePerson
 app = FastAPI()
 
 from processVideo import processVideo
@@ -233,6 +237,200 @@ async def deleteSpecificImage(token: str, personName: str, imageName: str):
 
     os.remove(imagePath)
     return {"message": "Image deleted successfully"}
+import asyncio
+
+@app.websocket("/ws/realtime")
+async def realtime_feed(websocket: WebSocket):
+    await websocket.accept()
+
+    # Models / state
+    yoloModel = YOLO("yolo11n.pt")
+    idToConfidence = {}
+    frame_count = 0
+
+    latest_frame = None
+    frame_event = asyncio.Event()
+    userFolderPath = None
+    receiver_task = None
+
+    async def receiver():
+        nonlocal latest_frame, userFolderPath
+        try:
+            # --- Expect first message to be token (text) ---
+            try:
+                first_msg = await asyncio.wait_for(websocket.receive(), timeout=2.0)
+            except asyncio.TimeoutError:
+                return
+
+            # Extract token from the first message
+            token_msg = None
+            if "text" in first_msg and first_msg["text"] is not None:
+                token_msg = first_msg["text"]
+            elif "bytes" in first_msg and first_msg["bytes"] is not None:
+                # If client accidentally sent bytes first, try to read a text next
+                try:
+                    token_msg = await websocket.receive_text()
+                except Exception:
+                    print("Expected token text as first message, got bytes. Closing.")
+                    await websocket.close(code=4002)
+                    return
+            else:
+                # Fallback
+                try:
+                    token_msg = await websocket.receive_text()
+                except Exception:
+                    await websocket.close(code=4002)
+                    return
+
+            token = (token_msg or "").strip()
+            userId = tokenToUserId(token)
+            if not await getUserById(userId):
+                await websocket.close(code=4001)
+                return
+            userFolderPath = os.path.join(usersFolder, userId)
+
+            # --- Now receive frames / control messages ---
+            while True:
+                try:
+                    message = await asyncio.wait_for(websocket.receive(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    continue  # Allows cancellation to be checked
+
+                # client closed connection
+                if message.get("type") == "websocket.disconnect":
+                    break
+
+                # binary frame
+                if "bytes" in message and message["bytes"] is not None:
+                    try:
+                        nparr = np.frombuffer(message["bytes"], np.uint8)
+                        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        if frame is not None:
+                            latest_frame = frame
+                            frame_event.set()
+                    except Exception as e:
+                        print("frame decode error:", e)
+                        # skip malformed frames
+                        continue
+
+                # text / control message
+                elif "text" in message and message["text"] is not None:
+                    txt = message["text"].strip().lower()
+                    # optional control processing: "pause", "resume", "close", etc.
+                    if txt == "close":
+                        try:
+                            await websocket.close()
+                        except Exception:
+                            pass
+                        break
+                    # ignore other text for now
+                    continue
+
+                else:
+                    # unknown message type - ignore
+                    continue
+
+        except WebSocketDisconnect:
+            return
+        except Exception as exc:
+            # ensure exceptions inside the task do not become "Task exception was never retrieved"
+            print("Receiver task error:", exc)
+            return
+
+    # start the receiver task
+    receiver_task = asyncio.create_task(receiver())
+
+    try:
+        while True:
+            # wait until a new frame is available
+            await frame_event.wait()
+            frame_event.clear()
+            frame = latest_frame
+            if frame is None:
+                continue
+
+            # Run detection (YOLO)
+            try:
+                results = yoloModel.track(frame, persist=True)
+            except Exception as e:
+                print("YOLO tracking error:", e)
+                # still try to send the raw frame back
+                _, jpeg = cv2.imencode('.jpg', frame)
+                await websocket.send_bytes(jpeg.tobytes())
+                frame_count += 1
+                continue
+
+            if results and results[0] is not None:
+                result = results[0]
+                for box in result.boxes:
+                    classId = int(box.cls[0])
+                    if classId != 0:
+                        continue
+
+                    trackingID = int(box.id[0])
+                    if trackingID not in idToConfidence:
+                        idToConfidence[trackingID] = ("Unknown", 0.0)
+
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+
+                    # clamp coords to frame bounds (avoid crashes)
+                    h, w = frame.shape[:2]
+                    x1 = max(0, min(w - 1, x1))
+                    x2 = max(0, min(w - 1, x2))
+                    y1 = max(0, min(h - 1, y1))
+                    y2 = max(0, min(h - 1, y2))
+
+                    # Only run recognition every 10 frames
+                    if frame_count % 10 == 0:
+                        try:
+                            if x2 > x1 and y2 > y1:
+                                personImage = frame[y1:y2, x1:x2]
+                                if personImage.size != 0:
+                                    rgbPersonImage = cv2.cvtColor(personImage, cv2.COLOR_BGR2RGB)
+                                    encodings = face_recognition.face_encodings(rgbPersonImage)
+                                    if encodings:
+                                        faceEncoding = encodings[0]
+                                        predictedPerson, confidence = recognizePerson(userFolderPath, faceEncoding)
+                                        _, old_conf = idToConfidence.get(trackingID, ("Unknown", 0.0))
+                                        if confidence > old_conf:
+                                            idToConfidence[trackingID] = (predictedPerson, confidence)
+                        except Exception as e:
+                            # face cropping/encoding error -> skip this box
+                            print("Face recognition error:", e)
+
+                    # Draw bounding box and label (use last known)
+                    predictedPerson, confidence = idToConfidence.get(trackingID, ("Unknown", 0.0))
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    label = f"{predictedPerson} ({confidence:.2f})"
+                    cv2.putText(frame, label, (x1, max(y1 - 10, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+            # Encode and send processed frame
+            try:
+                _, jpeg = cv2.imencode('.jpg', frame)
+                await websocket.send_bytes(jpeg.tobytes())
+            except Exception as e:
+                print("Error sending frame:", e)
+                # attempt to continue; if websocket truly closed, next operations will fail and exit
+            frame_count += 1
+
+    except WebSocketDisconnect:
+        # client disconnected
+        pass
+    except Exception as e:
+        print("Error in main loop:", e)
+    finally:
+        # cleanup receiver task
+        if receiver_task:
+            receiver_task.cancel()
+            try:
+                await receiver_task
+            except Exception:
+                pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
 
 import uvicorn
 

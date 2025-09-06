@@ -8,6 +8,7 @@ import CurrentMedia from "./pages/CurrentMedia";
 import AddMedia from "./pages/AddMedia";
 import ProcessVideo from "./pages/processVideo";
 import CreateModel from "./pages/createModel";
+import RealTime from "./pages/realTime";
 //import { LogIn, Signal } from "lucide-react";
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/add-media" element={<AddMedia />} />
         <Route path="/process-video" element={<ProcessVideo />} />
         <Route path="/create-model" element={<CreateModel />} />
+        <Route path="/realtime-video" element={<RealTime />} />
       </Routes>
     </div>
   );
