@@ -15,6 +15,9 @@ def processVideo(videoPath, userFolderPath, outputVideoPath):
     out = cv2.VideoWriter(outputVideoPath, fourcc, fps, (width, height))
 
     idToConfidence = {}  # {trackingID: (predictedPerson, confidence)}
+    idToLastEncoding = {}  # Optionally store last encoding for each ID
+
+    frame_count = 0
 
     while True:
         ret, frame = cap.read()
@@ -30,34 +33,36 @@ def processVideo(videoPath, userFolderPath, outputVideoPath):
                 continue
 
             trackingID = int(box.id[0])
-            if trackingID  not in idToConfidence:
+            if trackingID not in idToConfidence:
                 idToConfidence[trackingID] = ("Unknown", 0.0)
             x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-            # Extract face and get encoding
-            personImage = frame[y1:y2, x1:x2]
-            rgbPersonImage = cv2.cvtColor(personImage, cv2.COLOR_BGR2RGB)
-            encodings = face_recognition.face_encodings(rgbPersonImage)
-            if not encodings:
-                continue
+            # Only apply face recognition every 10 frames
+            if frame_count % 10 == 0:
+                personImage = frame[y1:y2, x1:x2]
+                rgbPersonImage = cv2.cvtColor(personImage, cv2.COLOR_BGR2RGB)
+                encodings = face_recognition.face_encodings(rgbPersonImage)
+                if not encodings:
+                    continue
 
-            faceEncoding = encodings[0]
-            predictedPerson, confidence = recognizePerson(userFolderPath, faceEncoding)
+                faceEncoding = encodings[0]
+                predictedPerson, confidence = recognizePerson(userFolderPath, faceEncoding)
 
-            # Update tracking ID info
-            if trackingID in idToConfidence:
-                _, existingConfidence = idToConfidence[trackingID]
-                if confidence > existingConfidence:
+                # Update tracking ID info
+                if trackingID in idToConfidence:
+                    _, existingConfidence = idToConfidence[trackingID]
+                    if confidence > existingConfidence:
+                        idToConfidence[trackingID] = (predictedPerson, confidence)
+                else:
                     idToConfidence[trackingID] = (predictedPerson, confidence)
-            else:
-                idToConfidence[trackingID] = (predictedPerson, confidence)
-
-            # Draw bounding box and label
+            # Draw bounding box and label (always use last known)
+            predictedPerson, confidence = idToConfidence.get(trackingID, ("Unknown", 0.0))
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             label = f"{predictedPerson} ({confidence:.2f})"
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(frame, label, (x1, max(y1 - 10, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         # Write frame to output video
         out.write(frame)
+        frame_count += 1
 
     cap.release()
     out.release()
