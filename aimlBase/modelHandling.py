@@ -31,7 +31,7 @@ def createModelScratch(userFolderPath):
     # Create pipeline with scaling + SGDClassifier
     clf = make_pipeline(
         StandardScaler(),
-        SGDClassifier(class_weight="balanced", random_state=42)
+        SGDClassifier(class_weight="balanced", random_state=42, loss="log_loss")
     )
     clf.fit(X, y)
 
@@ -69,7 +69,7 @@ def updateModel(userFolderPath,imagePaths):
     if not os.path.isfile(modelPath):
         clf = make_pipeline(
             StandardScaler(),
-            SGDClassifier(class_weight="balanced", random_state=42)
+            SGDClassifier(class_weight="balanced", random_state=42, loss="log_loss")
         )
         clf.fit(x, y)
         modelPackage = {

@@ -1,4 +1,3 @@
-import face_recognition
 import joblib
 import os
 def recognizePerson(userFolderPath,faceEncoding):
