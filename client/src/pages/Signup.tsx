@@ -14,9 +14,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import config from '../config.json';
 
 const Signup = () => {
+  const backendUrl = config.backend;
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -26,6 +29,11 @@ const Signup = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (!username.trim()) {
+      setError("Username is required");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
@@ -40,12 +48,14 @@ const Signup = () => {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/signup", {
+      const formData = new FormData();
+      formData.append("email", email);
+      formData.append("username", username);
+      formData.append("password", password);
+
+      const response = await fetch(`${backendUrl}/register`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
+        body: formData,
       });
 
       if (response.ok) {
@@ -64,24 +74,26 @@ const Signup = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">
-            AI Security Guard
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-300 px-4">
+      <Card className="w-full max-w-md shadow-lg border-0 rounded-2xl">
+        <CardHeader className="text-center pb-2">
+          <CardTitle className="text-3xl font-extrabold tracking-tight text-gray-800">
+            Monitr
           </CardTitle>
-          <CardDescription>Create your account</CardDescription>
+          <CardDescription className="text-base text-gray-600">
+            Create your account to get started
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+            <div className="space-y-1">
+              <Label htmlFor="email" className="text-gray-700">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -89,11 +101,27 @@ const Signup = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="Enter your email"
+                autoComplete="email"
+                className="rounded-lg"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+            <div className="space-y-1">
+              <Label htmlFor="username" className="text-gray-700">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                placeholder="Choose a username"
+                autoComplete="username"
+                className="rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="password" className="text-gray-700">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -102,11 +130,13 @@ const Signup = () => {
                 required
                 placeholder="Enter your password"
                 minLength={6}
+                autoComplete="new-password"
+                className="rounded-lg"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <div className="space-y-1">
+              <Label htmlFor="confirmPassword" className="text-gray-700">Confirm Password</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -115,17 +145,19 @@ const Signup = () => {
                 required
                 placeholder="Confirm your password"
                 minLength={6}
+                autoComplete="new-password"
+                className="rounded-lg"
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full rounded-lg font-semibold text-base" disabled={loading}>
               {loading ? "Creating account..." : "Sign Up"}
             </Button>
           </form>
 
-          <div className="mt-4 text-center text-sm">
+          <div className="mt-6 text-center text-sm text-gray-600">
             Already have an account?{" "}
-            <Link to="/login" className="text-primary hover:underline">
+            <Link to="/login" className="text-primary font-medium hover:underline">
               Sign in
             </Link>
           </div>

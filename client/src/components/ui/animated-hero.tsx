@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 function Hero() {
   const [titleNumber, setTitleNumber] = useState(0);
   const titles = useMemo(
-    () => ["amazing", "new", "wonderful", "Easy", "smart"],
+    () => ["Simple", "Secure", "Reliable", "Smarter", "Faster"],
     []
   );
   const navigate = useNavigate();
@@ -27,10 +27,15 @@ function Hero() {
     <div className="w-full">
       <div className="container mx-auto">
         <div className="flex gap-8 py-20 lg:py-40 items-center justify-center flex-col">
-          <div></div>
           <div className="flex gap-4 flex-col">
+            {/* Website Name */}
+            <h1 className="text-6xl md:text-8xl font-bold tracking-tight text-center">
+              Monitr
+            </h1>
+
+            {/* Animated Tagline */}
             <h1 className="text-5xl md:text-7xl max-w-2xl tracking-tighter text-center font-regular">
-              <span className="text-spektr-cyan-50">Ai Monitoring is Now</span>
+              <span className="text-spektr-cyan-50">AI Monitoring Made</span>
               <span className="relative flex w-full justify-center overflow-hidden text-center md:pb-4 md:pt-1">
                 &nbsp;
                 {titles.map((title, index) => (
@@ -41,14 +46,8 @@ function Hero() {
                     transition={{ type: "spring", stiffness: 50 }}
                     animate={
                       titleNumber === index
-                        ? {
-                            y: 0,
-                            opacity: 1,
-                          }
-                        : {
-                            y: titleNumber > index ? -150 : 150,
-                            opacity: 0,
-                          }
+                        ? { y: 0, opacity: 1 }
+                        : { y: titleNumber > index ? -150 : 150, opacity: 0 }
                     }
                   >
                     {title}
@@ -58,12 +57,13 @@ function Hero() {
             </h1>
 
             <p className="text-lg md:text-xl leading-relaxed tracking-tight text-muted-foreground max-w-2xl text-center">
-              Keeping your home safe is already a big responsibility. Avoid the
-              hassle of constant manual monitoring with outdated security
-              methods. Our goal is to simplify home protection, making it
-              smarter, faster, and more reliable than ever with AI..
+              Home security shouldn’t be complicated. Instead of relying on
+              outdated systems or constant manual checks, our AI-powered
+              monitoring gives you peace of mind with protection that’s smarter,
+              faster, and more reliable.
             </p>
           </div>
+
           <div className="flex flex-row gap-3">
             <Button
               size="lg"
@@ -71,14 +71,14 @@ function Hero() {
               variant="outline"
               onClick={() => navigate("/login")}
             >
-              LogIn <LogIn className="w-4 h-4" />
+              Log in <LogIn className="w-4 h-4" />
             </Button>
             <Button
               size="lg"
               className="gap-4"
               onClick={() => navigate("/signup")}
             >
-              Sign up here <MoveRight className="w-4 h-4" />
+              Get Started <MoveRight className="w-4 h-4" />
             </Button>
           </div>
         </div>

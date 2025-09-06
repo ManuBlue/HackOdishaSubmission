@@ -22,8 +22,8 @@ app.add_middleware(
 )
 secretToken = "Letthisbetemp"
 # MongoDB client
-client = AsyncIOMotorClient("mongodb://localhost:27017/")
-db = client['cctv_processing']
+client = AsyncIOMotorClient("mongodb+srv://admin:admin123@mycluster.h0cxfmp.mongodb.net/")
+db = client['Monitr']
 collection = db['User_credentials']
 
 # Paths
@@ -59,7 +59,14 @@ def cleanup_files(paths: list[str]):
             os.remove(path)
         except Exception as e:
             print(f"Failed to remove {path}: {e}")
-
+def tokenToUserId(token: str) -> str:
+    try:
+        decoded = jwt.decode(token, secretToken, algorithms=["HS256"])
+        return decoded.get("user_id")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 # -------------------------------
 # Endpoints
 # -------------------------------
@@ -90,10 +97,9 @@ async def register(username: str = Form(...), email: str = Form(...), password: 
             "user_id": str(result.inserted_id),
             "username": user_document["username"],
             "email": user_document["email"]}, secretToken, algorithm="HS256")
-        print(pytoken)
+        #print(pytoken)
         return pytoken
     except Exception as e:
-        print(e)
         await collection.delete_one({"_id": result.inserted_id})
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
@@ -124,10 +130,9 @@ async def login(email: str = Form(...), password: str = Form(...)):
     except Exception:
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
-
 @app.post("/addImages")
-async def addImages(userId: str, names: List[str], images: List[UploadFile] = File(...)):
+async def addImages(token: str = Form(...), names: List[str] = Form(...), images: List[UploadFile] = File(...)):
+    userId = tokenToUserId(token)
     if not await getUserById(userId):
         raise HTTPException(status_code=401, detail="Invalid UserId!")
 
@@ -146,11 +151,12 @@ async def addImages(userId: str, names: List[str], images: List[UploadFile] = Fi
     return {"message": "Images uploaded successfully"}
 
 @app.post("/processVideo")
-async def processVideo(
-    userId: str = Form(...), 
+async def processVideoWeb(
+    token: str = Form(...), 
     video: UploadFile = File(...), 
     background_tasks: BackgroundTasks = None
 ):
+    userId = tokenToUserId(token)
     if not await getUserById(userId):
         raise HTTPException(status_code=401, detail="Invalid UserId!")
 
@@ -176,18 +182,20 @@ async def processVideo(
     )
 
 @app.get("/makeModel")
-async def makeModel(userId: str = Form(...)):
+async def makeModel(token: str):
+    userId = tokenToUserId(token)
     if not await getUserById(userId):
         raise HTTPException(status_code=401, detail="Invalid UserId!")
 
-    imagesFolder = os.path.join(usersFolder, userId, "images")
+    userFolder = os.path.join(usersFolder, userId)
 
-    createModelScratch(imagesFolder)
+    createModelScratch(userFolder)
 
     return {"status": "Model remade successfully"}
 
 @app.get("/getUserImageDetails")
-async def getUserImageDetails(userId: str):
+async def getUserImageDetails(token: str):
+    userId = tokenToUserId(token)
     if not await getUserById(userId):
         raise HTTPException(status_code=401, detail="Invalid UserId!")
     imagesFolder = os.path.join(usersFolder, userId, "images")
@@ -201,8 +209,10 @@ async def getUserImageDetails(userId: str):
             "images": os.listdir(personFolder)
         }
     return details
+
 @app.get('/getSpecificImage')
-async def getSpecificImage(userId: str, personName: str, imageName: str):
+async def getSpecificImage(token: str, personName: str, imageName: str):
+    userId = tokenToUserId(token)
     if not await getUserById(userId):
         raise HTTPException(status_code=401, detail="Invalid UserId!")
 
